@@ -21,8 +21,8 @@ const ViewModelValue = class {
     }
 };
 
-const ViewModel = class extends ViewModelListener{
-    static #subjects = new Set; //옵저버에 통보할 서브젝트 모음
+const ViewModel = class extends ViewModelSubject{
+/*    static #subjects = new Set; //옵저버에 통보할 서브젝트 모음
     static #inited = false; // 최초에만 requestAnimationFrame발동
     static notify(vm) {
         this.#subjects.add(vm);
@@ -38,15 +38,11 @@ const ViewModel = class extends ViewModelListener{
             requestAnimationFrame(f); //발동
         };
         requestAnimationFrame(f)
-    }
+    }*/
 
-    subKey = ""; parent =null;
-    static #private = Symbol();
-    static get(data) {
-        return new ViewModel(this.#private, data)
-    }
+   
     // viewModel은 subject 이기 때문에 listener을 가지고 있어야 notification을 해줄 수 있다
-    #isUpdated = new Set; #listeners = new Set;
+  /*  #isUpdated = new Set; #listeners = new Set;
     addListener(v, _=type(v,ViewModelListener)){
         this.#listeners.add(v);
     }
@@ -55,7 +51,24 @@ const ViewModel = class extends ViewModelListener{
     }
     notify(){
         this.#listeners.forEach(v=>v.viewmodelUpdated(this.#isUpdated));
+    }*/
+    
+    #subKey = ""; parent =null;
+    get subKey() {
+        return this.#subKey; //퍼플릭 게터 프라이빗 세터 READ ONLY
     }
+    static #private = Symbol();
+    static get(data) {
+        return new ViewModel(this.#private, data)
+    }
+    #parent = null;
+    get parent() { return this.#parent ;}
+    setParent(parent, subKey) {
+        this.#parent = type(parent, ViewModel);
+        this.#subKey = subKey;
+        this.addListener(parent);
+    }
+    
     //옵저버 패턴의 서브젝트들
     styles= {}; attributes ={} ; properties  ={}; events ={}; // viewmodel의 속성
     constructor(checker, data, _=type(data,"object")) {
@@ -81,8 +94,8 @@ const ViewModel = class extends ViewModelListener{
                             get:_=>v1,
                             set:newV =>{
                                 v1 = newV; //함수가 돌때마다 새로 가져오는 v에 새로v값을 넣어줌 v는 스코프변수
-                                this.#isUpdated.add(
-                                    new ViewModelValue(k, k1, v1)
+                                this.add( //부모에게 추가를 부탁
+                                    new ViewModelValue(this.#subKey, k, k1, v1)
                                 ); // vm에 있는 업데이트에 뭔가를 넣어줌
                             }
                         };
@@ -93,24 +106,73 @@ const ViewModel = class extends ViewModelListener{
                     get:_=>v,
                     set:newV=>{
                         v= newV;
-                        this.#isUpdated.add(new ViewModelValue( this.subKey, "",k,v));
+                        this.add(new ViewModelValue( this.#subKey, "",k,v));
                     }
                 });
                 if(v instanceof ViewModel) { // 서브트리의 변화도 위로 보고 해야함..
-                    v.parent = this;
-                    v.subKey = k; //서브키 할당 버스키가 없을경우 ROOT
-                    v.addListener(this); //나는 자식에 대해 리스너가 되어 있어야함
+                    /*v.parent = this;
+                    v.#subKey = k; //서브키 할당 버스키가 없을경우 ROOT
+                    v.addListener(this); //나는 자식에 대해 리스너가 되어 있어야함*/
+                    v.setParent(this, k);
                 }
             }
         });
-        this.notify(this); //첫번재 데이터가 완성되고 나면 변화가 없지만 처음에 만들어지면 notify를 쳐줘야함
-        //requestAnimationFrame한번당 notify를 한번 해줘야함
+        /*this.notify(this); //첫번재 데이터가 완성되고 나면 변화가 없지만 처음에 만들어지면 notify를 쳐줘야함
+        //requestAnimationFrame한번당 notify를 한번 해줘야함*/ //생성시점에 notify하는것이 아닌 addListenr하는 시점에 lazy하게 등록
         Object.seal(this);
     }
     viewmodelUpdated(updated) {
-        updated.forEach(v=>this.#isUpdated.add(v)); //위 내용 통째로 updated에 넣는다.
+        updated.forEach(v=>this.add(v)); //위 내용 통째로 updated에 넣는다.
     }
 };
+
+
+//뷰모델과 subject 의 분리 뷰모델과 subject는 어울리지 않는다. 분리
+const ViewModelSubject = class extends ViewModelListener{ // 뷰모델 리스너와 subject를 동시에 상속받을 방법이 없다
+    static #subjects = new Set; static #inited = false;
+    static notify() {
+        const f =_=>{
+            this.#subjects.forEach(v=>{
+                if(v.#info.size){
+                    v.notify();
+                    v.clear();
+                }
+            });
+            if(this.#inited) requestAnimationFrame(f); // 발동 이된 이후에도 inited가 true가 되면 돌다가 false되 면 멈추게 사용
+        };
+        requestAnimationFrame(f);
+    }
+    
+    static watch(vm, _=type(vm,ViewModelListener)){
+        this.#subjects.add(vm);
+        if(!this.#inited){
+            this.#inited = true;
+            this.notify();
+        }
+    }
+    static unwatch(vm, _=type(vm,ViewModelListener)){
+        this.#subjects.delete(vm);
+        if(!this.#subjects.size) this.#inited = false;
+    }
+    
+    #info = new Set; #listeners = new Set;
+    add(v, _=type(v, ViewModelValue)){ this.#info.add(v);}
+    clear(){this.#info.clear()}  //기본적으로 소스가 비슷하지만 add 와 clear가 추가되었다.
+    addListener(v, _=type(v, ViewModelListener)) {
+        this.#listeners.add(v);
+        ViewModelSubject.watch(this); // 리스너가 들어오기 전까진 감시할 필요없고, 리스너가 하나라도 생겼을때 감시한다.
+    }
+    removeListener(v, _=type(v, ViewModelListener)){
+        this.#listeners.delete(v);
+        if(!this.#listeners.size) ViewModelSubject.unwatch(this);
+    }
+    notify() {
+        this.#listeners.forEach(v=>v.viewmodelUpdated(this.#info));
+    }
+};
+
+
+
 
 
 //외부에서 의존성을 주입받아야 한다

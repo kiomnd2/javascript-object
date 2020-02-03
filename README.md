@@ -420,3 +420,18 @@ const Binder = class extends ViewModelListener{
 }
 ```
 * watch를 통해 binder에서 viewModel을 관찰
+
+
+
+## Chapter4. Visitor
+
+### ISP
+* 객체지향에서 코드를 분해하는 가장 기본적인 방법
+* Viewmodel의 역할과 subject로서의 기능으로서의 역할은 다르다 따라서 분리 되어야함
+
+
+### Solid 원칙
+* SRP : 단일책임
+* OCP : 개발폐쇄
+* LSP : 업캐스팅 안전
+* ISP : 인터페이스 분리
