@@ -258,7 +258,41 @@ const Binder = class extends ViewModelListener{
 };
 
 
+// care taker, visitor
+const Visitor = class {
+    visit(action, target, _0=type(action,'function')){
+        throw "override";
+    }
+};
+
+const DomVisitor = class extends Visitor {
+    visit(action, target, _0=type(action, "function"), _1=type(target, HTMLElement)) { //target은 하위에서 타입이 확정됨 .
+        const stack = [];
+        let curr = target.firstElementChild;
+        do {
+            action(curr); // caretaker와의 상호작용
+            if( curr.firstElementChild) stack.push(curr.firstElementChild);
+            if( curr.nextElementSibling)stack.push(curr.nextElementSibling);
+        }while( curr = stack.pop());
+    }
+};
+/*
 const Scanner = class {
+    #visitor;
+    constructor(visitor, DomVisitor) {
+        this.#visitor = visitor;
+    }
+    scan(target, _=type(target, HTMLElement)){
+        const binder = new Binder, f = el=>{
+            const vm = el.getAttribute("data-viewmodel");
+            if(vm) binder.add(new BinderItem(el,vm));
+        };
+        f(target);
+        this.#visitor.visit(f, target);
+        return binder;
+    }
+
+/!*
     scan(el, _=type(el, HTMLElement)){
         const binder = new Binder;
         this.checkItem(binder,el);
@@ -275,8 +309,34 @@ const Scanner = class {
     checkItem(binder,el) {
         const vm = el.getAttribute("data-viewmodel");
         if(vm) binder.add(new BinderItem(el,vm));
+    }*!/
+};*/
+
+// visitor과 추상화 레이어를 맞춤
+//기존 스캐너는 돔 기반 스캐너 따라서 추상화 필요
+
+const Scanner = class {
+    #visitor;
+    constructor(visitor) {
+        this.#visitor = visitor;
     }
-    
+    visit(f, target){this.#visitor.visit(f,target);}
+    scan(target) {throw "override";}
+};
+
+const DomScanner = class extends Scanner {
+    constructor(visitor, _=type(visitor,DomVisitor)) {
+        super(visitor);
+    }
+    scan(target, _=type(target, HTMLElement)) {
+        const binder = new Binder, f = el => {
+            const vm = el.getAttribute("data-viewmodel");
+            if(vm) binder.add(new BinderItem(el ,vm));
+        };
+        f(target);
+        this.visit(f, target);
+        return binder;
+    }
 };
 
 const viewmodel = ViewModel.get({
